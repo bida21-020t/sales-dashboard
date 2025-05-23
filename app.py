@@ -14,7 +14,11 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score, accuracy_sco
 # Optimized data loading function
 def load_data():
     if not os.path.exists('web_interaction_data_with_clusters.csv'):
-        subprocess.run(['bash', 'download_data.sh'])
+        subprocess.run(['bash', 'download_data.sh'], check=True)
+    
+    # Only load columns you actually use
+    usecols = ['Timestamp', 'Country', 'Product', 'Salesperson', 
+               'Cluster', 'Product Sold', 'Requested Demo']
     
     dtype = {
         'Timestamp': 'str',
@@ -22,14 +26,19 @@ def load_data():
         'Product': 'category',
         'Salesperson': 'category',
         'Cluster': 'int8',
-        'Product Sold': 'int8',
-        'Requested Demo': 'int8',
-        'Converted': 'int8',
-        'Job Type': 'category'
+        'Product Sold': 'int8', 
+        'Requested Demo': 'int8'
     }
-    df = pd.read_csv('web_interaction_data_with_clusters.csv', dtype=dtype)
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-    return df
+    
+    try:
+        df = pd.read_csv('web_interaction_data_with_clusters.csv', 
+                        usecols=usecols,
+                        dtype=dtype)
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        return df
+    except Exception as e:
+        print(f"Data loading failed: {str(e)}")
+        raise
 
 # Load data once at startup
 df = load_data()
