@@ -487,4 +487,4 @@ def export_filtered_data(n_clicks, start_date, end_date, region, product, salesp
 
 # Run the app
 if __name__ == '__main__':
-       app.run_server(host='0.0.0.0', port=8050, debug=False)
+       dash_app.run_server(host='0.0.0.0', port=8050)
