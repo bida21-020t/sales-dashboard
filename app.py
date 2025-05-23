@@ -1,3 +1,10 @@
+import os
+import subprocess
+# Download data if missing
+if not os.path.exists('web_interaction_data_with_clusters.csv'):
+    subprocess.run(['bash', 'download_data.sh'])
+
+# THEN continue with your existing imports
 import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
