@@ -71,7 +71,7 @@ anomaly_fig.update_layout(title='Anomaly Detection in Daily Product Sales',
 # Initialize app with callback exception suppression
 app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], suppress_callback_exceptions=True)
 app.title = "Sales Dashboard"
-
+app = app.server
 # Filters
 available_regions = sorted(df['Country'].dropna().unique())
 available_products = sorted(df['Product'].dropna().unique())
