@@ -75,17 +75,22 @@ anomaly_fig.add_trace(go.Scatter(x=daily_sales.loc[daily_sales['Anomaly'], 'Date
 anomaly_fig.update_layout(title='Anomaly Detection in Daily Product Sales',
                      xaxis_title='Date', yaxis_title='Sales')
 
-# Initialize app with callback exception suppression
-app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], suppress_callback_exceptions=True)
-app.title = "Sales Dashboard"
-app = app.server
+# Initialize Dash app
+dash_app = Dash(__name__, 
+               external_stylesheets=[dbc.themes.FLATLY],
+               suppress_callback_exceptions=True)
+dash_app.title = "Sales Dashboard"
+
+# Get the underlying Flask server
+server = dash_app.server
+
 # Filters
 available_regions = sorted(df['Country'].dropna().unique())
 available_products = sorted(df['Product'].dropna().unique())
 available_salespeople = sorted(df['Salesperson'].dropna().unique())
 
 # App Layout 
-app.layout = html.Div(style={'height': '100vh', 'overflow': 'hidden'}, children=[
+dash_app.layout = html.Div(style={'height': '100vh', 'overflow': 'hidden'}, children=[
     dbc.Container(fluid=True, style={'height': '100%', 'display': 'flex', 'flexDirection': 'column'}, children=[
         html.H1("AI Solution Sales Dashboard", className="text-center mb-2", style={'flex': '0 0 auto'}),
         
@@ -482,4 +487,4 @@ def export_filtered_data(n_clicks, start_date, end_date, region, product, salesp
 
 # Run the app
 if __name__ == '__main__':
-      app.run(debug=True, host='0.0.0.0', port=8050)
+       app.run_server(host='0.0.0.0', port=8050, debug=False)
