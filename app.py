@@ -1,7 +1,7 @@
 import os
 import subprocess
 import pandas as pd
-from dash import Dash, dcc, html, Input, Output, State
+from dash import Dash, dcc, html, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
@@ -14,7 +14,11 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score, accuracy_sco
 # Optimized data loading function
 def load_data():
     if not os.path.exists('web_interaction_data_with_clusters.csv'):
-        subprocess.run(['bash', 'download_data.sh'], check=True)
+        try:
+            subprocess.run(['bash', 'download_data.sh'], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to download data: {e}")
+            return pd.DataFrame()
     
     # Only load columns you actually use
     usecols = ['Timestamp', 'Country', 'Product', 'Salesperson', 
@@ -38,11 +42,14 @@ def load_data():
         return df
     except Exception as e:
         print(f"Data loading failed: {str(e)}")
-        raise
+        return pd.DataFrame()
 
 # Load data once at startup
 df = load_data()
-df['DateOnly'] = df['Timestamp'].dt.date
+if df.empty:
+    print("Warning: Empty dataframe loaded!")
+else:
+    df['DateOnly'] = df['Timestamp'].dt.date
 
 # Cluster label mapping
 CLUSTER_LABELS = {
@@ -54,47 +61,54 @@ CLUSTER_LABELS = {
 }
 
 # === Precompute Evaluation Metrics ===
-demo_df = df[df['Requested Demo'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])].copy()
-daily_counts = demo_df.groupby('DateOnly').size().reset_index(name='Sales')
-q1 = daily_counts['Sales'].quantile(0.33)
-q2 = daily_counts['Sales'].quantile(0.66)
+if not df.empty:
+    demo_df = df[df['Requested Demo'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])].copy()
+    daily_counts = demo_df.groupby('DateOnly').size().reset_index(name='Sales')
+    q1 = daily_counts['Sales'].quantile(0.33)
+    q2 = daily_counts['Sales'].quantile(0.66)
 
-daily_counts['Pseudo_Label'] = daily_counts['Sales'].apply(lambda x: 0 if x < q1 else (1 if x < q2 else 2))
-scaler = StandardScaler()
-scaled_data = scaler.fit_transform(daily_counts[['Sales']])
-kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
-cluster_labels = kmeans.fit_predict(scaled_data)
+    daily_counts['Pseudo_Label'] = daily_counts['Sales'].apply(lambda x: 0 if x < q1 else (1 if x < q2 else 2))
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(daily_counts[['Sales']])
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
+    cluster_labels = kmeans.fit_predict(scaled_data)
 
-mapping = {}
-for cluster in np.unique(cluster_labels):
-    true_labels = daily_counts['Pseudo_Label'][cluster_labels == cluster]
-    majority_label = true_labels.value_counts().idxmax()
-    mapping[cluster] = majority_label
-mapped_preds = [mapping[label] for label in cluster_labels]
+    mapping = {}
+    for cluster in np.unique(cluster_labels):
+        true_labels = daily_counts['Pseudo_Label'][cluster_labels == cluster]
+        majority_label = true_labels.value_counts().idxmax()
+        mapping[cluster] = majority_label
+    mapped_preds = [mapping[label] for label in cluster_labels]
 
-accuracy_score_value = accuracy_score(daily_counts['Pseudo_Label'], mapped_preds)
-silhouette_score_value = silhouette_score(scaled_data, cluster_labels)
-db_index_value = davies_bouldin_score(scaled_data, cluster_labels)
+    accuracy_score_value = accuracy_score(daily_counts['Pseudo_Label'], mapped_preds)
+    silhouette_score_value = silhouette_score(scaled_data, cluster_labels)
+    db_index_value = davies_bouldin_score(scaled_data, cluster_labels)
 
-# === Precompute Anomaly Chart ===
-filtered_df = df[df['Product Sold'] == 1].copy()
-daily_sales = filtered_df.groupby('DateOnly').size().reset_index(name='Sales')
-daily_sales['RollingMean'] = daily_sales['Sales'].rolling(window=7, center=True).mean()
-daily_sales['RollingStd'] = daily_sales['Sales'].rolling(window=7, center=True).std()
-daily_sales['Zscore'] = (daily_sales['Sales'] - daily_sales['RollingMean']) / daily_sales['RollingStd']
-daily_sales['Anomaly'] = daily_sales['Zscore'].abs() > 1.5
+    # === Precompute Anomaly Chart ===
+    filtered_df = df[df['Product Sold'] == 1].copy()
+    daily_sales = filtered_df.groupby('DateOnly').size().reset_index(name='Sales')
+    daily_sales['RollingMean'] = daily_sales['Sales'].rolling(window=7, center=True).mean()
+    daily_sales['RollingStd'] = daily_sales['Sales'].rolling(window=7, center=True).std()
+    daily_sales['Zscore'] = (daily_sales['Sales'] - daily_sales['RollingMean']) / daily_sales['RollingStd']
+    daily_sales['Anomaly'] = daily_sales['Zscore'].abs() > 1.5
 
-anomaly_fig = go.Figure()
-anomaly_fig.add_trace(go.Scatter(x=daily_sales['DateOnly'], y=daily_sales['Sales'],
-                  mode='lines+markers', name='Daily Sales'))
-anomaly_fig.add_trace(go.Scatter(x=daily_sales['DateOnly'], y=daily_sales['RollingMean'],
-                  mode='lines', name='Rolling Mean'))
-anomaly_fig.add_trace(go.Scatter(x=daily_sales.loc[daily_sales['Anomaly'], 'DateOnly'],
-                  y=daily_sales.loc[daily_sales['Anomaly'], 'Sales'],
-                  mode='markers', name='Anomalies',
-                  marker=dict(color='red', size=10)))
-anomaly_fig.update_layout(title='Anomaly Detection in Daily Product Sales',
-                     xaxis_title='Date', yaxis_title='Sales')
+    anomaly_fig = go.Figure()
+    anomaly_fig.add_trace(go.Scatter(x=daily_sales['DateOnly'], y=daily_sales['Sales'],
+                    mode='lines+markers', name='Daily Sales'))
+    anomaly_fig.add_trace(go.Scatter(x=daily_sales['DateOnly'], y=daily_sales['RollingMean'],
+                    mode='lines', name='Rolling Mean'))
+    anomaly_fig.add_trace(go.Scatter(x=daily_sales.loc[daily_sales['Anomaly'], 'DateOnly'],
+                    y=daily_sales.loc[daily_sales['Anomaly'], 'Sales'],
+                    mode='markers', name='Anomalies',
+                    marker=dict(color='red', size=10)))
+    anomaly_fig.update_layout(title='Anomaly Detection in Daily Product Sales',
+                         xaxis_title='Date', yaxis_title='Sales')
+else:
+    # Create empty figures if no data
+    anomaly_fig = go.Figure()
+    accuracy_score_value = 0
+    silhouette_score_value = 0
+    db_index_value = 0
 
 # Initialize Dash app
 dash_app = Dash(__name__, 
@@ -106,9 +120,9 @@ dash_app.title = "Sales Dashboard"
 server = dash_app.server
 
 # Filters
-available_regions = sorted(df['Country'].dropna().unique())
-available_products = sorted(df['Product'].dropna().unique())
-available_salespeople = sorted(df['Salesperson'].dropna().unique())
+available_regions = sorted(df['Country'].dropna().unique()) if not df.empty else []
+available_products = sorted(df['Product'].dropna().unique()) if not df.empty else []
+available_salespeople = sorted(df['Salesperson'].dropna().unique()) if not df.empty else []
 
 # App Layout 
 dash_app.layout = html.Div(style={'height': '100vh', 'overflow': 'hidden'}, children=[
@@ -128,10 +142,10 @@ dash_app.layout = html.Div(style={'height': '100vh', 'overflow': 'hidden'}, chil
                     html.Label("Date Range"),
                     dcc.DatePickerRange(
                         id="date-filter",
-                        min_date_allowed=df['Timestamp'].min().date(),
-                        max_date_allowed=df['Timestamp'].max().date(),
-                        start_date=df['Timestamp'].min().date(),
-                        end_date=df['Timestamp'].max().date(),
+                        min_date_allowed=df['Timestamp'].min().date() if not df.empty else datetime.date.today(),
+                        max_date_allowed=df['Timestamp'].max().date() if not df.empty else datetime.date.today(),
+                        start_date=df['Timestamp'].min().date() if not df.empty else datetime.date.today(),
+                        end_date=df['Timestamp'].max().date() if not df.empty else datetime.date.today(),
                         style={'width': '100%'}
                     )
                 ], width=3),
@@ -174,6 +188,9 @@ dash_app.layout = html.Div(style={'height': '100vh', 'overflow': 'hidden'}, chil
 
 # ================= Layout Functions =================
 def get_sales_exec_layout(dff):
+    if dff.empty:
+        return html.Div("No data available for selected filters", className="text-center mt-5")
+    
     # Get actual sales data from 'Product Sold' column
     sales_data = dff[dff['Product Sold'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])].copy()
     # Get demo requests
@@ -266,21 +283,26 @@ def get_sales_exec_layout(dff):
     ], style={'height': '100%'})
 
 def get_sales_mgr_layout(dff):
-    job_counts = dff.groupby(['Salesperson', 'Job Type']).size().reset_index(name='Count')
+    if dff.empty:
+        return html.Div("No data available for selected filters", className="text-center mt-5")
     
-    if not job_counts.empty:
-        fig = px.bar(job_counts, x='Salesperson', y='Count', color='Job Type', barmode='stack',
-                    title="Job Requests Breakdown by Salesperson")
+    # Use Cluster information instead of non-existent Job Type
+    cluster_counts = dff.groupby(['Salesperson', 'Cluster']).size().reset_index(name='Count')
+    cluster_counts['Cluster'] = cluster_counts['Cluster'].map(CLUSTER_LABELS)
+    
+    if not cluster_counts.empty:
+        fig = px.bar(cluster_counts, x='Salesperson', y='Count', color='Cluster', barmode='stack',
+                    title="Customer Requests by Type per Salesperson")
         fig.update_layout(height=400)
     else:
         fig = go.Figure()
         fig.update_layout(
-            title="Job Requests Breakdown by Salesperson - No Data Available",
+            title="Customer Requests by Type per Salesperson - No Data Available",
             height=400,
             xaxis={"visible": False},
             yaxis={"visible": False},
             annotations=[{
-                "text": "No job request data available for selected filters",
+                "text": "No data available for selected filters",
                 "xref": "paper",
                 "yref": "paper",
                 "showarrow": False,
@@ -304,6 +326,9 @@ def get_biz_analyst_layout(dff):
     ])
 
 def get_regional_coord_layout(dff):
+    if dff.empty:
+        return html.Div("No data available for selected filters", className="text-center mt-5")
+    
     # Filter for actual sales data
     sales_data = dff[dff['Product Sold'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])].copy()
     
@@ -335,7 +360,7 @@ def get_regional_coord_layout(dff):
     ], style={'height': '90%'})
 
 # ================= Callbacks =================
-@app.callback(
+@dash_app.callback(
     Output("tab-content", "children"),
     Input("tabs", "active_tab"),
     Input("date-filter", "start_date"),
@@ -345,6 +370,9 @@ def get_regional_coord_layout(dff):
     Input("salesperson-filter", "value")
 )
 def update_tab(tab, start_date, end_date, region, product, salespeople):
+    if df.empty:
+        return html.Div("No data available", className="text-center mt-5")
+    
     dff = df[(df['Timestamp'] >= pd.to_datetime(start_date)) & (df['Timestamp'] <= pd.to_datetime(end_date))]
     if region:
         dff = dff[dff['Country'].isin(region)]
@@ -363,7 +391,7 @@ def update_tab(tab, start_date, end_date, region, product, salespeople):
         return get_regional_coord_layout(dff)
     return html.P("Tab not found")
 
-@app.callback(
+@dash_app.callback(
     Output("biz-tab-content", "children"),
     Input("biz-tabs", "active_tab"),
     Input("date-filter", "start_date"),
@@ -376,6 +404,9 @@ def update_biz_tab(active_tab, start_date, end_date, region, product, salespeopl
     # Default to "biz_overview" if no tab is active
     if active_tab is None:
         active_tab = "biz_overview"
+        
+    if df.empty:
+        return html.Div("No data available", className="text-center mt-5")
         
     dff = df[(df['Timestamp'] >= pd.to_datetime(start_date)) & (df['Timestamp'] <= pd.to_datetime(end_date))]
     if region:
@@ -405,40 +436,25 @@ def update_biz_tab(active_tab, start_date, end_date, region, product, salespeopl
         dbc.Col(dcc.Graph(figure=action_fig, style={'height': '350px'}))
     ], className="mt-4")
     
-    conversions = dff['Converted'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])
+    conversions = dff['Product Sold'].astype(str).str.strip().str.lower().isin(['yes', 'y', 'true', '1'])
     conversion_rate = round(conversions.mean() * 100, 2) if not conversions.empty else 0
 
     top_products = dff['Product'].value_counts().reset_index()
     top_products.columns = ['Product', 'Count']
     top_product_name = top_products.iloc[0]['Product'] if not top_products.empty else "N/A"
 
-    # Cluster summary with meaningful labels - fixed version
+    # Cluster summary with meaningful labels
     dff = dff.copy()  # Ensure we're working with a copy
-    dff.loc[:, 'Cluster_Label'] = dff['Cluster'].map(CLUSTER_LABELS)
+    dff['Cluster_Label'] = dff['Cluster'].map(CLUSTER_LABELS)
     cluster_summary = dff['Cluster_Label'].value_counts().reset_index()
     cluster_summary.columns = ['Cluster', 'Count']
     
-    # Create cluster figure with numeric x-axis labels only and no numbers inside bars
+    # Create cluster figure with proper labels
     if not cluster_summary.empty:
-        cluster_fig = go.Figure()
-        for i, row in cluster_summary.iterrows():
-            cluster_fig.add_trace(go.Bar(
-                x=[row['Cluster']],
-                y=[row['Count']],
-                name=row['Cluster'],
-                textposition='none'  # This removes the numbers inside the bars
-            ))
-        cluster_fig.update_layout(
-            title="Customer Count per Cluster",
-            height=400,
-            xaxis={
-                'tickvals': [0, 1, 2, 3, 4],
-                'ticktext': ['0', '1', '2', '3', '4'],
-                'title': 'Cluster'
-            },
-            yaxis={'title': 'Count'},
-            showlegend=True
-        )
+        cluster_fig = px.bar(cluster_summary, x='Cluster', y='Count', 
+                            title="Customer Count per Cluster Type",
+                            color='Cluster')
+        cluster_fig.update_layout(height=400)
     else:
         cluster_fig = go.Figure()
 
@@ -486,7 +502,7 @@ def update_biz_tab(active_tab, start_date, end_date, region, product, salespeopl
         ], style={'overflow': 'auto'})
     return "Tab content not found"
 
-@app.callback(
+@dash_app.callback(
     Output("download-csv", "data"),
     Input("export-csv", "n_clicks"),
     State("date-filter", "start_date"),
@@ -497,6 +513,9 @@ def update_biz_tab(active_tab, start_date, end_date, region, product, salespeopl
     prevent_initial_call=True
 )
 def export_filtered_data(n_clicks, start_date, end_date, region, product, salespeople):
+    if df.empty:
+        return None
+        
     dff = df[(df['Timestamp'] >= pd.to_datetime(start_date)) & (df['Timestamp'] <= pd.to_datetime(end_date))]
     if region:
         dff = dff[dff['Country'].isin(region)]
