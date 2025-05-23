@@ -526,10 +526,7 @@ def export_filtered_data(n_clicks, start_date, end_date, region, product, salesp
     return dcc.send_data_frame(dff.to_csv, "filtered_dashboard_data.csv")
 
 # Run the app
+# At the bottom of app.py, replace the if __name__ block with:
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8050))
-    dash_app.run_server(
-        host='0.0.0.0',
-        port=port,
-        debug=False  # Set to False in production
-    )
+    port = int(os.environ.get('PORT', 8050))  # Render sets PORT env var
+    dash_app.run_server(host='0.0.0.0', port=port)
