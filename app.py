@@ -528,5 +528,5 @@ def export_filtered_data(n_clicks, start_date, end_date, region, product, salesp
 # Run the app
 # At the bottom of app.py, replace the if __name__ block with:
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8050))  # Render sets PORT env var
+    port = int(os.environ.get('PORT', 8080))  # Render sets PORT env var
     dash_app.run_server(host='0.0.0.0', port=port)
