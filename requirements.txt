@@ -1,8 +1,8 @@
-﻿dash==3.0.4
-dash-bootstrap-components==2.0.2
-numpy==2.0.0
-pandas==2.2.3
-plotly==6.0.1
-scikit-learn==1.6.1
 pip>=25.1.1
+dash==2.14.2
+dash-bootstrap-components==1.6.0
+pandas==2.0.0
+plotly==5.18.0
 gunicorn==21.2.0
+scikit-learn==1.4.0
+numpy==2.0.0
