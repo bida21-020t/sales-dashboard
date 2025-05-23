@@ -8,7 +8,7 @@ services:
     startCommand: gunicorn --workers=4 --threads=2 --timeout=60 app:server
     envVars:
       - key: PORT
-        value: 8050  # Render automatically sets this, but you can override
+        value: 1000  # Render automatically sets this, but you can override
       - key: DEBUG
         value: "False"services:
   - type: web
