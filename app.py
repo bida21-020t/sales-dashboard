@@ -41,7 +41,7 @@ q2 = daily_counts['Sales'].quantile(0.66)
 daily_counts['Pseudo_Label'] = daily_counts['Sales'].apply(lambda x: 0 if x < q1 else (1 if x < q2 else 2))
 scaler = StandardScaler()
 scaled_data = scaler.fit_transform(daily_counts[['Sales']])
-kmeans = KMeans(n_clusters=3, random_state=42)
+kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
 cluster_labels = kmeans.fit_predict(scaled_data)
 
 mapping = {}
@@ -482,4 +482,4 @@ def export_filtered_data(n_clicks, start_date, end_date, region, product, salesp
 
 # Run the app
 if __name__ == '__main__':
-    app.run(debug=True)
+      app.run(debug=True, host='0.0.0.0', port=8050)
