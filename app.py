@@ -1,27 +1,39 @@
 import os
 import subprocess
-# Download data if missing
-if not os.path.exists('web_interaction_data_with_clusters.csv'):
-    subprocess.run(['bash', 'download_data.sh'])
-
-# THEN continue with your existing imports
 import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import datetime
-import base64
-import io
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, davies_bouldin_score, accuracy_score
 
-# Load dataset
-df = pd.read_csv('web_interaction_data_with_clusters.csv')
-df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-df['DateOnly'] = df['Timestamp'].dt.date  # Create DateOnly column once upfront
+# Optimized data loading function
+def load_data():
+    if not os.path.exists('web_interaction_data_with_clusters.csv'):
+        subprocess.run(['bash', 'download_data.sh'])
+    
+    dtype = {
+        'Timestamp': 'str',
+        'Country': 'category',
+        'Product': 'category',
+        'Salesperson': 'category',
+        'Cluster': 'int8',
+        'Product Sold': 'int8',
+        'Requested Demo': 'int8',
+        'Converted': 'int8',
+        'Job Type': 'category'
+    }
+    df = pd.read_csv('web_interaction_data_with_clusters.csv', dtype=dtype)
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    return df
+
+# Load data once at startup
+df = load_data()
+df['DateOnly'] = df['Timestamp'].dt.date
 
 # Cluster label mapping
 CLUSTER_LABELS = {
